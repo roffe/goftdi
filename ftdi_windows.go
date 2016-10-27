@@ -1,56 +1,99 @@
 package ftdi
 
-import "unsafe"
-import "syscall"
-import "bytes"
-import "time"
+// +build windows
+
+import (
+	"bytes"
+	"io"
+	"syscall"
+	"time"
+	"unsafe"
+)
+
+var ErrInit error
+
+var (
+	ftCreateDeviceInfoList *syscall.Proc
+	ftGetDeviceInfoDetail  *syscall.Proc
+	ftOpen                 *syscall.Proc
+	ftClose                *syscall.Proc
+	ftRead                 *syscall.Proc
+	ftWrite                *syscall.Proc
+	ftGetStatus            *syscall.Proc
+	ftGetQueueStatus       *syscall.Proc
+	ftPurge                *syscall.Proc
+	ftSetBaudRate          *syscall.Proc
+	ftSetBitMode           *syscall.Proc
+	ftSetFlowControl       *syscall.Proc
+	ftSetLatency           *syscall.Proc
+	ftSetChars             *syscall.Proc
+	ftSetLineProperty      *syscall.Proc
+	ftSetTimeout           *syscall.Proc
+	ftSetTransferSize      *syscall.Proc
+	ftResetPort            *syscall.Proc
+	ftResetDevice          *syscall.Proc
+)
+
+func init() {
+	dllFuncs := map[string]**syscall.Proc{
+		"FT_CreateDeviceInfoList":   &ftCreateDeviceInfoList,
+		"FT_GetDeviceInfoDetail":    &ftGetDeviceInfoDetail,
+		"FT_Open":                   &ftOpen,
+		"FT_Close":                  &ftClose,
+		"FT_Read":                   &ftRead,
+		"FT_Write":                  &ftWrite,
+		"FT_GetStatus":              &ftGetStatus,
+		"FT_GetQueueStatus":         &ftGetQueueStatus,
+		"FT_Purge":                  &ftPurge,
+		"FT_SetBaudRate":            &ftSetBaudRate,
+		"FT_SetBitMode":             &ftSetBitMode,
+		"FT_SetFlowControl":         &ftSetFlowControl,
+		"FT_SetLatencyTimer":        &ftSetLatency,
+		"FT_SetChars":               &ftSetChars,
+		"FT_SetDataCharacteristics": &ftSetLineProperty,
+		"FT_SetTimeouts":            &ftSetTimeout,
+		"FT_SetUSBParameters":       &ftSetTransferSize,
+		"FT_ResetPort":              &ftResetPort,
+		"FT_ResetDevice":            &ftResetDevice,
+	}
+	d2xx, err := syscall.LoadDLL("ftd2xx.dll")
+	if err != nil {
+		ErrInit = err
+		return
+	}
+	for k, v := range dllFuncs {
+		proc, err := d2xx.FindProc(k)
+		if err != nil {
+			ErrInit = err
+			return
+		}
+		*v = proc
+	}
+}
 
 func bytesToString(b []byte) string {
 	n := bytes.Index(b, []byte{0})
 	return string(b[:n])
 }
 
-var d2xx = syscall.MustLoadDLL("ftd2xx.dll")
-
-var (
-	createDeviceInfoList = d2xx.MustFindProc("FT_CreateDeviceInfoList")
-	getDeviceInfoDetail  = d2xx.MustFindProc("FT_GetDeviceInfoDetail")
-	ft_open              = d2xx.MustFindProc("FT_Open")
-	ft_close             = d2xx.MustFindProc("FT_Close")
-	ft_read              = d2xx.MustFindProc("FT_Read")
-	ft_write             = d2xx.MustFindProc("FT_Write")
-	ft_getStatus         = d2xx.MustFindProc("FT_GetStatus")
-	ft_purge             = d2xx.MustFindProc("FT_Purge")
-	setBaudRate          = d2xx.MustFindProc("FT_SetBaudRate")
-	setBitMode           = d2xx.MustFindProc("FT_SetBitMode")
-	setFlowControl       = d2xx.MustFindProc("FT_SetFlowControl")
-	setLatency           = d2xx.MustFindProc("FT_SetLatencyTimer")
-	setChars             = d2xx.MustFindProc("FT_SetChars")
-	setLineProperty      = d2xx.MustFindProc("FT_SetDataCharacteristics")
-	setTimeout           = d2xx.MustFindProc("FT_SetTimeouts")
-	setTransferSize      = d2xx.MustFindProc("FT_SetUSBParameters")
-	resetPort            = d2xx.MustFindProc("FT_ResetPort")
-	resetDevice          = d2xx.MustFindProc("FT_ResetDevice")
-)
-
 type Device uintptr
 
 type DeviceInfo struct {
-	index         uint64
-	flags         uint64
-	dtype         uint64
-	id            uint64
-	location      uint64
+	index        uint64
+	flags        uint64
+	dtype        uint64
+	id           uint64
+	location     uint64
 	SerialNumber string
-	Description   string
-	handle        uintptr
+	Description  string
+	handle       uintptr
 }
 
 func GetDeviceList() (di []DeviceInfo, e error) {
 	var n uint32
-	r, _, err := createDeviceInfoList.Call(uintptr(unsafe.Pointer(&n)))
-	if r != 0 {
-		return di, err
+	r, _, _ := ftCreateDeviceInfoList.Call(uintptr(unsafe.Pointer(&n)))
+	if r != FT_OK {
+		return nil, ftdiError(r)
 	}
 
 	di = make([]DeviceInfo, n)
@@ -59,7 +102,7 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 		var sn [16]byte
 		var description [64]byte
 		d.index = uint64(i)
-		r, _, e = getDeviceInfoDetail.Call(uintptr(i),
+		r, _, _ = ftGetDeviceInfoDetail.Call(uintptr(i),
 			uintptr(unsafe.Pointer(&(d.flags))),
 			uintptr(unsafe.Pointer(&d.dtype)),
 			uintptr(unsafe.Pointer(&d.id)),
@@ -67,8 +110,10 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 			uintptr(unsafe.Pointer(&sn)),
 			uintptr(unsafe.Pointer(&description)),
 			uintptr(unsafe.Pointer(&d.handle)))
-		if r != 0 {
-			return di, e
+		if r != FT_OK {
+			n--
+			di = di[:n]
+			continue
 		}
 		d.SerialNumber = bytesToString(sn[:])
 		d.Description = bytesToString(description[:])
@@ -80,169 +125,181 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 
 func Open(di DeviceInfo) (*Device, error) {
 	var dev Device
-	r, _, e := ft_open.Call(uintptr(di.index), uintptr(unsafe.Pointer(&dev)))
-	if r == 0 {
-		return &dev, nil
+	r, _, _ := ftOpen.Call(uintptr(di.index), uintptr(unsafe.Pointer(&dev)))
+	if r != FT_OK {
+		return nil, ftdiError(r)
 	}
-	return nil, e
+	return &dev, nil
 }
 
 func (d *Device) Close() (e error) {
-	r, _, e := ft_close.Call(uintptr(*d))
-	if r == 0 {
-		return nil
+	r, _, _ := ftClose.Call(uintptr(*d))
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
-// Does this have Posix Counterpart?
 func (d *Device) GetStatus() (rx_queue, tx_queue, events int32, e error) {
-	r, _, e := ft_getStatus.Call(uintptr(*d),
+	r, _, _ := ftGetStatus.Call(uintptr(*d),
 		uintptr(unsafe.Pointer(&rx_queue)),
 		uintptr(unsafe.Pointer(&tx_queue)),
 		uintptr(unsafe.Pointer(&events)))
-	if r == 0 {
-		return rx_queue, tx_queue, events, nil
+
+	if r != FT_OK {
+		return rx_queue, tx_queue, events, ftdiError(r)
 	}
-	return rx_queue, tx_queue, events, e
+	return rx_queue, tx_queue, events, nil
 }
 
-//TODO: Need EOF logic for a closed device
+func (d *Device) GetQueueStatus() (rx_queue int32, e error) {
+	r, _, _ := ftGetQueueStatus.Call(uintptr(*d),
+		uintptr(unsafe.Pointer(&rx_queue)))
+
+	if r != FT_OK {
+		return rx_queue, ftdiError(r)
+	}
+	return rx_queue, nil
+}
+
 func (d *Device) Read(p []byte) (n int, e error) {
 	var bytesRead uint32
 	bytesToRead := uint32(len(p))
 
-    // Bugfix: Only read what's available immediately. On windows, you can't
-    // trust ft_read to block until the requested amount of data is available. 
-    // We also insert a delay to force the read to block for more data...
-    // ugh... crappy FTDI drivers.
-    rx_cnt, _, _, e := d.GetStatus()
-    if bytesToRead > uint32(rx_cnt) {
-        time.Sleep(20*time.Millisecond)
-        bytesToRead = uint32(rx_cnt)
-    }
+	for {
+		rx_cnt, err := d.GetQueueStatus()
+		if err != nil {
+			return int(bytesRead), io.EOF
+		}
+		if rx_cnt > 0 {
+			bytesToRead = uint32(rx_cnt)
+			break
+		}
+		time.Sleep(CHECK_RX_DELAY_MS * time.Millisecond)
+	}
 
 	ptr := &p[0] //A reference to the first element of the underlying "array"
-	r, _, e := ft_read.Call(uintptr(*d),
+	r, _, _ := ftRead.Call(uintptr(*d),
 		uintptr(unsafe.Pointer(ptr)),
 		uintptr(bytesToRead),
 		uintptr(unsafe.Pointer(&bytesRead)))
-	if r == 0 {
-		return int(bytesRead), nil
+	if r != FT_OK {
+		return int(bytesRead), ftdiError(r)
 	}
-	return int(bytesRead), e
+	return int(bytesRead), nil
 }
 
 func (d *Device) Write(p []byte) (n int, e error) {
 	var bytesWritten uint32
 	bytesToWrite := uint32(len(p))
 	ptr := &p[0] //A reference to the first element of the underlying "array"
-	r, _, e := ft_write.Call(uintptr(*d),
+	r, _, _ := ftWrite.Call(uintptr(*d),
 		uintptr(unsafe.Pointer(ptr)),
 		uintptr(bytesToWrite),
 		uintptr(unsafe.Pointer(&bytesWritten)))
-	if r == 0 {
-		return int(bytesWritten), nil
+
+	if r != FT_OK {
+		return int(bytesWritten), ftdiError(r)
 	}
-	return int(bytesWritten), e
+	return int(bytesWritten), nil
 }
 
 func (d *Device) SetBaudRate(baud uint) (e error) {
-	r, _, e := setBaudRate.Call(uintptr(*d), uintptr(uint32(baud)))
-	if r == 0 {
-		return nil
+	r, _, _ := ftSetBaudRate.Call(uintptr(*d), uintptr(uint32(baud)))
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 // Set the 'event' and 'error' characheters. Disabled if the charachter is '0x00'.
 func (d *Device) SetChars(event, err byte) (e error) {
-	r, _, e := setChars.Call(uintptr(*d),
+	r, _, _ := ftSetChars.Call(uintptr(*d),
 		uintptr(event),
 		uintptr(event),
 		uintptr(err),
 		uintptr(err))
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) SetBitMode(mode BitMode) (e error) {
-	r, _, e := setBitMode.Call(uintptr(*d),
+	r, _, _ := ftSetBitMode.Call(uintptr(*d),
 		uintptr(0x00), // All pins set to input
 		uintptr(byte(mode)))
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) SetFlowControl(f FlowControl) (e error) {
-	r, _, e := setFlowControl.Call(uintptr(*d),
+	r, _, _ := ftSetFlowControl.Call(uintptr(*d),
 		uintptr(uint16(f)), // All pins set to input
 		uintptr(0x11),      // XON Character
 		uintptr(0x13))      // XOFF Character
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 // Set latency in milliseconds. Valid between 2 and 255.
 func (d *Device) SetLatency(latency int) (e error) {
-	r, _, e := setLatency.Call(uintptr(*d), uintptr(byte(latency)))
-	if r == 0 {
-		return nil
+	r, _, _ := ftSetLatency.Call(uintptr(*d), uintptr(byte(latency)))
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 // Set the transfer size. Valid between 64 and 64k bytes in 64-byte increments.
 func (d *Device) SetTransferSize(read_size, write_size int) (e error) {
-	r, _, e := setTransferSize.Call(uintptr(*d),
+	r, _, _ := ftSetTransferSize.Call(uintptr(*d),
 		uintptr(uint32(read_size)),
 		uintptr(uint32(write_size)))
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) SetLineProperty(props LineProperties) (e error) {
-	r, _, e := setLineProperty.Call(uintptr(*d),
+	r, _, _ := ftSetLineProperty.Call(uintptr(*d),
 		uintptr(byte(props.Bits)),
 		uintptr(byte(props.StopBits)),
 		uintptr(byte(props.Parity)))
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) SetTimeout(read_timeout, write_timeout int) (e error) {
-	r, _, e := setTimeout.Call(uintptr(*d),
+	r, _, _ := ftSetTimeout.Call(uintptr(*d),
 		uintptr(uint32(read_timeout)),
 		uintptr(uint32(write_timeout)))
-	if r == 0 {
-		return nil
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) Reset() (e error) {
-	r, _, e := resetDevice.Call(uintptr(*d))
-	if r == 0 {
-		return nil
+	r, _, _ := ftResetDevice.Call(uintptr(*d))
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
 
 func (d *Device) Purge() (e error) {
 	// Purge both RX and TX buffers
-	r, _, e := ft_purge.Call(uintptr(*d), uintptr(0x01|0x02))
-	if r == 0 {
-		return nil
+	r, _, _ := ftPurge.Call(uintptr(*d), uintptr(0x01|0x02))
+	if r != FT_OK {
+		return ftdiError(r)
 	}
-	return e
+	return nil
 }
