@@ -4,6 +4,7 @@ package ftdi
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"syscall"
 	"time"
@@ -34,6 +35,11 @@ var (
 	ftResetDevice          *syscall.Proc
 )
 
+var (
+	ErrInvalidDriver  = errors.New("Unsupported FTDI DLL")
+	ErrDriverNotFound = errors.New("FTDI driver not found in system directories")
+)
+
 func init() {
 	dllFuncs := map[string]**syscall.Proc{
 		"FT_CreateDeviceInfoList":   &ftCreateDeviceInfoList,
@@ -58,13 +64,13 @@ func init() {
 	}
 	d2xx, err := syscall.LoadDLL("ftd2xx.dll")
 	if err != nil {
-		ErrInit = err
+		ErrInit = ErrDriverNotFound
 		return
 	}
 	for k, v := range dllFuncs {
 		proc, err := d2xx.FindProc(k)
 		if err != nil {
-			ErrInit = err
+			ErrInit = ErrInvalidDriver
 			return
 		}
 		*v = proc
