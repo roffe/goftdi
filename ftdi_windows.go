@@ -1,6 +1,7 @@
-package ftdi
-
+//go:build windows
 // +build windows
+
+package ftdi
 
 import (
 	"bytes"
@@ -33,6 +34,8 @@ var (
 	ftSetTransferSize      *syscall.Proc
 	ftResetPort            *syscall.Proc
 	ftResetDevice          *syscall.Proc
+	ftSetBreakOn           *syscall.Proc
+	ftSetBreakOff          *syscall.Proc
 )
 
 var (
@@ -61,6 +64,8 @@ func init() {
 		"FT_SetUSBParameters":       &ftSetTransferSize,
 		"FT_ResetPort":              &ftResetPort,
 		"FT_ResetDevice":            &ftResetDevice,
+		"FT_SetBreakOn":             &ftSetBreakOn,
+		"FT_SetBreakOff":            &ftSetBreakOff,
 	}
 	d2xx, err := syscall.LoadDLL("ftd2xx.dll")
 	if err != nil {
@@ -304,6 +309,22 @@ func (d *Device) Reset() (e error) {
 func (d *Device) Purge() (e error) {
 	// Purge both RX and TX buffers
 	r, _, _ := ftPurge.Call(uintptr(*d), uintptr(0x01|0x02))
+	if r != FT_OK {
+		return ftdiError(r)
+	}
+	return nil
+}
+
+func (d *Device) SetBreakOn() (e error) {
+	r, _, _ := ftSetBreakOn.Call(uintptr(*d))
+	if r != FT_OK {
+		return ftdiError(r)
+	}
+	return nil
+}
+
+func (d *Device) SetBreakOff() (e error) {
+	r, _, _ := ftSetBreakOff.Call(uintptr(*d))
 	if r != FT_OK {
 		return ftdiError(r)
 	}
