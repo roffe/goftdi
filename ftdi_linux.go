@@ -1,10 +1,14 @@
-package ftdi
+//go:build linux && cgo
 // +build linux,cgo
 
-import "errors"
-import "unsafe"
-import "sync"
-import "io"
+package ftdi
+
+import (
+	"errors"
+	"io"
+	"sync"
+	"unsafe"
+)
 
 // If installed on OSX using 'brew'
 // ;;#cgo CFLAGS: -I/usr/local/Cellar/libftdi/1.1/include/libftdi1/
@@ -34,7 +38,7 @@ type DeviceInfo struct {
 	handle        unsafe.Pointer // the libusb device pointer
 }
 
-//TODO: Need to expand multi-interface devices, and then to other FTDI chips
+// TODO: Need to expand multi-interface devices, and then to other FTDI chips
 func GetDeviceList() (dl []DeviceInfo, e error) {
 	ctx := C.ftdi_new()
 	defer C.ftdi_free(ctx)
@@ -83,7 +87,7 @@ func GetDeviceList() (dl []DeviceInfo, e error) {
 }
 
 type Device struct {
-	ctx *C.struct_ftdi_context
+	ctx  *C.struct_ftdi_context
 	open bool
 	lock sync.Mutex
 }
@@ -127,7 +131,7 @@ func (d *Device) Read(p []byte) (n int, e error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if !d.open {
-		return 0, io.EOF;
+		return 0, io.EOF
 	}
 	ret := C.ftdi_read_data(d.ctx, (*C.uchar)(&p[0]), C.int(len(p)))
 	if ret < 0 {
@@ -140,7 +144,7 @@ func (d *Device) Write(p []byte) (n int, e error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if !d.open {
-		return 0, errors.New("FTDI device is already closed");
+		return 0, errors.New("FTDI device is already closed")
 	}
 	ret := C.ftdi_write_data(d.ctx, (*C.uchar)(&p[0]), C.int(len(p)))
 	if ret < 0 {
@@ -240,6 +244,32 @@ func (d *Device) Purge() (e error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if ret := C.ftdi_usb_purge_buffers(d.ctx); ret < 0 {
+		return getErr(d.ctx)
+	}
+	return nil
+}
+
+func (d *Device) SetBreakOn(props LineProperties) (e error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	if ret := C.ftdi_set_line_property2(d.ctx,
+		uint32(props.Bits),
+		uint32(props.StopBits),
+		uint32(props.Parity),
+		uint32(1)); ret < 0 {
+		return getErr(d.ctx)
+	}
+	return nil
+}
+
+func (d *Device) SetBreakOff(props LineProperties) (e error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	if ret := C.ftdi_set_line_property2(d.ctx,
+		uint32(props.Bits),
+		uint32(props.StopBits),
+		uint32(props.Parity),
+		uint32(0)); ret < 0 {
 		return getErr(d.ctx)
 	}
 	return nil

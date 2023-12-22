@@ -315,7 +315,7 @@ func (d *Device) Purge() (e error) {
 	return nil
 }
 
-func (d *Device) SetBreakOn() (e error) {
+func (d *Device) SetBreakOn(props LineProperties) (e error) {
 	r, _, _ := ftSetBreakOn.Call(uintptr(*d))
 	if r != FT_OK {
 		return ftdiError(r)
@@ -323,7 +323,7 @@ func (d *Device) SetBreakOn() (e error) {
 	return nil
 }
 
-func (d *Device) SetBreakOff() (e error) {
+func (d *Device) SetBreakOff(props LineProperties) (e error) {
 	r, _, _ := ftSetBreakOff.Call(uintptr(*d))
 	if r != FT_OK {
 		return ftdiError(r)
