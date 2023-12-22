@@ -30,12 +30,12 @@ func GetLibraryVersion() uint32 {
 }
 
 type DeviceInfo struct {
-	index         uint64
-	id            uint32 // used as interface number
-	serial_number string
-	description   string
-	manufacturer  string
-	handle        unsafe.Pointer // the libusb device pointer
+	index        uint64
+	id           uint32 // used as interface number
+	SerialNumber string
+	Description  string
+	manufacturer string
+	handle       unsafe.Pointer // the libusb device pointer
 }
 
 // TODO: Need to expand multi-interface devices, and then to other FTDI chips
@@ -76,8 +76,8 @@ func GetDeviceList() (dl []DeviceInfo, e error) {
 		for j, intrfce := range []string{"A", "B", "C", "D"} {
 			d.index = uint64(i*4 + j)
 			d.id = uint32(j + 1)
-			d.description = C.GoString(&desc_char[0]) + " " + intrfce
-			d.serial_number = C.GoString(&ser_char[0]) + intrfce
+			d.Description = C.GoString(&desc_char[0]) + " " + intrfce
+			d.SerialNumber = C.GoString(&ser_char[0]) + intrfce
 			dl[d.index] = d
 		}
 		dev_list = dev_list.next
