@@ -46,7 +46,7 @@ func GetDeviceList() (dl []DeviceInfo, e error) {
 	var dev_list *C.struct_ftdi_device_list
 	defer C.ftdi_list_free(&dev_list)
 
-	num := C.ftdi_usb_find_all(ctx, &dev_list, 0x0403, 0x6011)
+	num := C.ftdi_usb_find_all(ctx, &dev_list, 0x0403, 0x6001)
 	if num < 0 {
 		return nil, getErr(ctx)
 	}
