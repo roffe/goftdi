@@ -20,10 +20,11 @@ import "C"
 
 // Return Library version, formatted to match D2XX
 func GetLibraryVersion() uint32 {
-	v := C.ftdi_get_library_version()
-	return uint32(v.major&0xFF<<16 +
-		v.minor&0xFF<<8 +
-		v.micro&0xFF)
+	// v := C.ftdi_get_library_version()
+	// return uint32(v.major&0xFF<<16 +
+	// 	v.minor&0xFF<<8 +
+	// 	v.micro&0xFF)
+	return 0x1ffff
 }
 
 type DeviceInfo struct {
