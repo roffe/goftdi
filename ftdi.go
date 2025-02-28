@@ -8,22 +8,22 @@ type BitMode byte
 
 const (
 	RESET         BitMode = 0x00
-	ASYNC_BITBANG         = 0x01
-	MPSSE                 = 0x02
-	SYNC_BITBANG          = 0x04
-	HOST_EMU              = 0x08
-	FAST_OPTO             = 0x10
-	CBUS_BITBANG          = 0x20
-	SYNCHRONOUS           = 0x40
+	ASYNC_BITBANG BitMode = 0x01
+	MPSSE         BitMode = 0x02
+	SYNC_BITBANG  BitMode = 0x04
+	HOST_EMU      BitMode = 0x08
+	FAST_OPTO     BitMode = 0x10
+	CBUS_BITBANG  BitMode = 0x20
+	SYNCHRONOUS   BitMode = 0x40
 )
 
 type FlowControl uint16
 
 const (
 	DISABLED FlowControl = 0x0000
-	RTS_CTS              = 0x0100
-	DTR_DSR              = 0x0200
-	XON_XOFF             = 0x0400
+	RTS_CTS  FlowControl = 0x0100
+	DTR_DSR  FlowControl = 0x0200
+	XON_XOFF FlowControl = 0x0400
 )
 
 type LineProperties struct {
@@ -51,7 +51,7 @@ const (
 	CHECK_RX_DELAY_MS = 200
 )
 
-//FT_STATUS (DWORD)
+// FT_STATUS (DWORD)
 const (
 	FT_OK                          = 0
 	FT_INVALID_HANDLE              = 1

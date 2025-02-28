@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package ftdi
 
@@ -7,8 +6,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -39,7 +38,7 @@ var (
 )
 
 var (
-	ErrInvalidDriver  = errors.New("Unsupported FTDI DLL")
+	ErrInvalidDriver  = errors.New("unsupported FTDI DLL")
 	ErrDriverNotFound = errors.New("FTDI driver not found in system directories")
 )
 
@@ -83,21 +82,48 @@ func init() {
 }
 
 func bytesToString(b []byte) string {
-	n := bytes.Index(b, []byte{0})
+	n := bytes.IndexByte(b, 0)
+	if n == -1 {
+		n = len(b)
+	}
 	return string(b[:n])
 }
+
+var _ io.ReadWriteCloser = (*Device)(nil)
 
 type Device uintptr
 
 type DeviceInfo struct {
-	index        uint64
-	flags        uint64
-	dtype        uint64
-	id           uint64
+	Index        uint64
+	Flags        uint64
+	Dtype        uint64
+	ID           uint64
 	location     uint64
 	SerialNumber string
 	Description  string
 	handle       uintptr
+}
+
+func GetDeviceInfoDetail(idx uint64) (DeviceInfo, error) {
+	var d DeviceInfo
+	var sn [16]byte
+	var description [64]byte
+	d.Index = idx
+	r, _, _ := ftGetDeviceInfoDetail.Call(uintptr(idx),
+		uintptr(unsafe.Pointer(&(d.Flags))),
+		uintptr(unsafe.Pointer(&d.Dtype)),
+		uintptr(unsafe.Pointer(&d.ID)),
+		uintptr(unsafe.Pointer(&d.location)),
+		uintptr(unsafe.Pointer(&sn)),
+		uintptr(unsafe.Pointer(&description)),
+		uintptr(unsafe.Pointer(&d.handle)))
+	if r != FT_OK {
+		return d, ftdiError(r)
+	}
+	d.SerialNumber = bytesToString(sn[:])
+	d.Description = bytesToString(description[:])
+	log.Println(d)
+	return d, nil
 }
 
 func GetDeviceList() (di []DeviceInfo, e error) {
@@ -112,11 +138,11 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 		var d DeviceInfo
 		var sn [16]byte
 		var description [64]byte
-		d.index = uint64(i)
+		d.Index = uint64(i)
 		r, _, _ = ftGetDeviceInfoDetail.Call(uintptr(i),
-			uintptr(unsafe.Pointer(&(d.flags))),
-			uintptr(unsafe.Pointer(&d.dtype)),
-			uintptr(unsafe.Pointer(&d.id)),
+			uintptr(unsafe.Pointer(&(d.Flags))),
+			uintptr(unsafe.Pointer(&d.Dtype)),
+			uintptr(unsafe.Pointer(&d.ID)),
 			uintptr(unsafe.Pointer(&d.location)),
 			uintptr(unsafe.Pointer(&sn)),
 			uintptr(unsafe.Pointer(&description)),
@@ -126,6 +152,7 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 			di = di[:n]
 			continue
 		}
+		//log.Printf("Flags: %d, dtype: %d, id: %d, \n", d.flags, d.dtype, d.id)
 		d.SerialNumber = bytesToString(sn[:])
 		d.Description = bytesToString(description[:])
 
@@ -136,7 +163,7 @@ func GetDeviceList() (di []DeviceInfo, e error) {
 
 func Open(di DeviceInfo) (*Device, error) {
 	var dev Device
-	r, _, _ := ftOpen.Call(uintptr(di.index), uintptr(unsafe.Pointer(&dev)))
+	r, _, _ := ftOpen.Call(uintptr(di.Index), uintptr(unsafe.Pointer(&dev)))
 	if r != FT_OK {
 		return nil, ftdiError(r)
 	}
@@ -175,24 +202,24 @@ func (d *Device) GetQueueStatus() (rx_queue int32, e error) {
 
 func (d *Device) Read(p []byte) (n int, e error) {
 	var bytesRead uint32
-	bytesToRead := uint32(len(p))
-
-	for {
-		rx_cnt, err := d.GetQueueStatus()
-		if err != nil {
-			return int(bytesRead), io.EOF
+	/*
+		for {
+			rx_cnt, err := d.GetQueueStatus()
+			if err != nil {
+				return int(bytesRead), io.EOF
+			}
+			if rx_cnt > 0 {
+				bytesToRead = uint32(rx_cnt)
+				break
+			}
+			time.Sleep(CHECK_RX_DELAY_MS * time.Millisecond)
+			log.Println("No data in RX buffer")
 		}
-		if rx_cnt > 0 {
-			bytesToRead = uint32(rx_cnt)
-			break
-		}
-		time.Sleep(CHECK_RX_DELAY_MS * time.Millisecond)
-	}
+	*/
 
-	ptr := &p[0] //A reference to the first element of the underlying "array"
 	r, _, _ := ftRead.Call(uintptr(*d),
-		uintptr(unsafe.Pointer(ptr)),
-		uintptr(bytesToRead),
+		uintptr(unsafe.Pointer(&p[0])),
+		uintptr(uint32(len(p))),
 		uintptr(unsafe.Pointer(&bytesRead)))
 	if r != FT_OK {
 		return int(bytesRead), ftdiError(r)
@@ -202,11 +229,9 @@ func (d *Device) Read(p []byte) (n int, e error) {
 
 func (d *Device) Write(p []byte) (n int, e error) {
 	var bytesWritten uint32
-	bytesToWrite := uint32(len(p))
-	ptr := &p[0] //A reference to the first element of the underlying "array"
 	r, _, _ := ftWrite.Call(uintptr(*d),
-		uintptr(unsafe.Pointer(ptr)),
-		uintptr(bytesToWrite),
+		uintptr(unsafe.Pointer(&p[0])),
+		uintptr(uint32(len(p))),
 		uintptr(unsafe.Pointer(&bytesWritten)))
 
 	if r != FT_OK {
@@ -222,6 +247,63 @@ func (d *Device) SetBaudRate(baud uint) (e error) {
 	}
 	return nil
 }
+
+/*
+type EventHandle struct {
+	Handle uintptr
+}
+
+var (
+	modkernel32     = syscall.NewLazyDLL("kernel32.dll")
+	procCreateEvent = modkernel32.NewProc("CreateEventW")
+)
+
+// CreateEvent implements win32 CreateEventW func in golang. It will create an event object.
+func CreateEvent(eventAttributes *syscall.SecurityAttributes, manualReset bool, initialState bool, name string) (handle syscall.Handle, err error) {
+	namep, _ := syscall.UTF16PtrFromString(name)
+	var _p1 uint32
+	if manualReset {
+		_p1 = 1
+	}
+	var _p2 uint32
+	if initialState {
+		_p2 = 1
+	}
+	r0, _, e1 := procCreateEvent.Call(uintptr(unsafe.Pointer(eventAttributes)), uintptr(_p1), uintptr(_p2), uintptr(unsafe.Pointer(namep)))
+	use(unsafe.Pointer(namep))
+	handle = syscall.Handle(r0)
+	if handle == syscall.InvalidHandle {
+		err = e1
+	}
+	return
+}
+
+var temp unsafe.Pointer
+
+// use ensures a variable is kept alive without the GC freeing while still needed
+func use(p unsafe.Pointer) {
+	temp = p
+}
+
+func (d *Device) SetEventNotification(event_mask uint32) (e error) {
+	cb := func() uintptr {
+		log.Println("Callback")
+		return 1
+	}
+
+	eh := EventHandle{Handle: syscall.NewCallback(cb)}
+	r, _, _ := ftSetEventNotification.Call(
+		uintptr(*d),
+		uintptr(event_mask),
+		uintptr(unsafe.Pointer(&eh)),
+	)
+	if r != FT_OK {
+		return ftdiError(r)
+	}
+	return nil
+}
+
+*/
 
 // Set the 'event' and 'error' characheters. Disabled if the charachter is '0x00'.
 func (d *Device) SetChars(event, err byte) (e error) {
@@ -306,9 +388,16 @@ func (d *Device) Reset() (e error) {
 	return nil
 }
 
-func (d *Device) Purge() (e error) {
-	// Purge both RX and TX buffers
-	r, _, _ := ftPurge.Call(uintptr(*d), uintptr(0x01|0x02))
+type PurgeFlag uint8
+
+const (
+	FT_PURGE_RX   PurgeFlag = 0x01
+	FT_PURGE_TX   PurgeFlag = 0x02
+	FT_PURGE_BOTH PurgeFlag = FT_PURGE_RX | FT_PURGE_TX
+)
+
+func (d *Device) Purge(flag PurgeFlag) (e error) {
+	r, _, _ := ftPurge.Call(uintptr(*d), uintptr(flag))
 	if r != FT_OK {
 		return ftdiError(r)
 	}

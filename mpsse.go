@@ -1,8 +1,10 @@
 package ftdi
 
-import "time"
-import "errors"
-import "io"
+import (
+	"errors"
+	"io"
+	"time"
+)
 
 //import "fmt"
 
@@ -29,7 +31,7 @@ type Spi struct {
 func InitializeSpi(d *Device) (s *Spi, e error) {
 	s = &Spi{d, 0x0B, 0x08}
 	d.Reset()
-	d.Purge()
+	d.Purge(FT_PURGE_RX | FT_PURGE_TX)
 	d.SetTransferSize(CHUNK_SIZE, CHUNK_SIZE)
 	d.SetChars(0, 0)
 	//d.SetTimeouts(1000)
@@ -47,7 +49,7 @@ func InitializeSpi(d *Device) (s *Spi, e error) {
 	buf := make([]byte, 2)
 	n, e := d.Read(buf)
 	if n != 2 || buf[0] != 0xFA || buf[1] != 0xAB {
-		return nil, errors.New("Error synchronizing with MPSSE core")
+		return nil, errors.New("error synchronizing with MPSSE core")
 	}
 
 	initCmds := []byte{
@@ -102,7 +104,7 @@ func (s *Spi) Read(b []byte) (n int, e error) {
 	n, e = io.ReadFull(s.d, b[:to_read])
 
 	if n != to_read {
-		return n, errors.New("Failed to read all data")
+		return n, errors.New("failed to read all data")
 	}
 
 	if e != nil {
@@ -171,7 +173,7 @@ func (s *Spi) Transfer(b []byte) (r []byte, e error) {
 	s.d.Write(cmds)
 	nr, e := io.ReadFull(s.d, cmds[:to_write])
 	if nr != to_write {
-		return r, errors.New("Failed to read all data")
+		return r, errors.New("failed to read all data")
 	}
 	r = append(r, cmds[:nr]...)
 
