@@ -5,15 +5,40 @@ package ftdi
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"syscall"
 	"unsafe"
 )
 
-var ErrInit error
+var InitErr error
 
 var (
+	dllFuncs = map[string]**syscall.Proc{
+		"FT_CreateDeviceInfoList":   &ftCreateDeviceInfoList,
+		"FT_GetDeviceInfoDetail":    &ftGetDeviceInfoDetail,
+		"FT_Open":                   &ftOpen,
+		"FT_Close":                  &ftClose,
+		"FT_Read":                   &ftRead,
+		"FT_Write":                  &ftWrite,
+		"FT_GetStatus":              &ftGetStatus,
+		"FT_GetQueueStatus":         &ftGetQueueStatus,
+		"FT_Purge":                  &ftPurge,
+		"FT_SetBaudRate":            &ftSetBaudRate,
+		"FT_SetBitMode":             &ftSetBitMode,
+		"FT_SetFlowControl":         &ftSetFlowControl,
+		"FT_SetLatencyTimer":        &ftSetLatency,
+		"FT_SetChars":               &ftSetChars,
+		"FT_SetDataCharacteristics": &ftSetLineProperty,
+		"FT_SetTimeouts":            &ftSetTimeout,
+		"FT_SetUSBParameters":       &ftSetTransferSize,
+		"FT_ResetPort":              &ftResetPort,
+		"FT_ResetDevice":            &ftResetDevice,
+		"FT_SetBreakOn":             &ftSetBreakOn,
+		"FT_SetBreakOff":            &ftSetBreakOff,
+	}
+
 	ftCreateDeviceInfoList *syscall.Proc
 	ftGetDeviceInfoDetail  *syscall.Proc
 	ftOpen                 *syscall.Proc
@@ -43,41 +68,18 @@ var (
 )
 
 func init() {
-	dllFuncs := map[string]**syscall.Proc{
-		"FT_CreateDeviceInfoList":   &ftCreateDeviceInfoList,
-		"FT_GetDeviceInfoDetail":    &ftGetDeviceInfoDetail,
-		"FT_Open":                   &ftOpen,
-		"FT_Close":                  &ftClose,
-		"FT_Read":                   &ftRead,
-		"FT_Write":                  &ftWrite,
-		"FT_GetStatus":              &ftGetStatus,
-		"FT_GetQueueStatus":         &ftGetQueueStatus,
-		"FT_Purge":                  &ftPurge,
-		"FT_SetBaudRate":            &ftSetBaudRate,
-		"FT_SetBitMode":             &ftSetBitMode,
-		"FT_SetFlowControl":         &ftSetFlowControl,
-		"FT_SetLatencyTimer":        &ftSetLatency,
-		"FT_SetChars":               &ftSetChars,
-		"FT_SetDataCharacteristics": &ftSetLineProperty,
-		"FT_SetTimeouts":            &ftSetTimeout,
-		"FT_SetUSBParameters":       &ftSetTransferSize,
-		"FT_ResetPort":              &ftResetPort,
-		"FT_ResetDevice":            &ftResetDevice,
-		"FT_SetBreakOn":             &ftSetBreakOn,
-		"FT_SetBreakOff":            &ftSetBreakOff,
-	}
 	d2xx, err := syscall.LoadDLL("ftd2xx.dll")
 	if err != nil {
-		ErrInit = ErrDriverNotFound
+		InitErr = ErrDriverNotFound
 		return
 	}
-	for k, v := range dllFuncs {
-		proc, err := d2xx.FindProc(k)
+	for procName, procPtr := range dllFuncs {
+		proc, err := d2xx.FindProc(procName)
 		if err != nil {
-			ErrInit = ErrInvalidDriver
+			InitErr = fmt.Errorf("FTDI driver missing function: %s", procName)
 			return
 		}
-		*v = proc
+		*procPtr = proc
 	}
 }
 
