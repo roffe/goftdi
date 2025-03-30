@@ -1,3 +1,5 @@
+//go:build ftdi
+
 package ftdi
 
 import (

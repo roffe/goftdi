@@ -95,38 +95,25 @@ var (
 	ErrOther                   = errors.New("FTDI :: Unknown FTDI error")
 )
 
-var errorList map[uintptr]error
-
-func init() {
-	errorList = map[uintptr]error{
-		FT_INVALID_HANDLE:              ErrInvalidHandle,
-		FT_DEVICE_NOT_FOUND:            ErrDeviceNotFound,
-		FT_DEVICE_NOT_OPENED:           ErrDeviceNotOpened,
-		FT_IO_ERROR:                    ErrIO,
-		FT_INSUFFICIENT_RESOURCES:      ErrInsufficientResources,
-		FT_INVALID_PARAMETER:           ErrInvalidParameter,
-		FT_INVALID_BAUD_RATE:           ErrInvalidBaudRate,
-		FT_DEVICE_NOT_OPENED_FOR_ERASE: ErrDeviceNotOpenedForErase,
-		FT_DEVICE_NOT_OPENED_FOR_WRITE: ErrDeviceNotOpenedForWrite,
-		FT_FAILED_TO_WRITE_DEVICE:      ErrFailedToWriteDevice,
-		FT_EEPROM_READ_FAILED:          ErrEReadFailed,
-		FT_EEPROM_WRITE_FAILED:         ErrEWriteFailed,
-		FT_EEPROM_ERASE_FAILED:         ErrEEraseFailed,
-		FT_EEPROM_NOT_PRESENT:          ErrENotPresent,
-		FT_EEPROM_NOT_PROGRAMMED:       ErrENotProgrammed,
-		FT_INVALID_ARGS:                ErrInvalidArgs,
-		FT_NOT_SUPPORTED:               ErrNotSupported,
-		FT_OTHER_ERROR:                 ErrOther,
-	}
-}
-
-func ftdiError(e uintptr) error {
-	err, ok := errorList[e]
-	if ok {
-		return err
-	} else {
-		return ErrOther
-	}
+var errorList = map[uintptr]error{
+	FT_INVALID_HANDLE:              ErrInvalidHandle,
+	FT_DEVICE_NOT_FOUND:            ErrDeviceNotFound,
+	FT_DEVICE_NOT_OPENED:           ErrDeviceNotOpened,
+	FT_IO_ERROR:                    ErrIO,
+	FT_INSUFFICIENT_RESOURCES:      ErrInsufficientResources,
+	FT_INVALID_PARAMETER:           ErrInvalidParameter,
+	FT_INVALID_BAUD_RATE:           ErrInvalidBaudRate,
+	FT_DEVICE_NOT_OPENED_FOR_ERASE: ErrDeviceNotOpenedForErase,
+	FT_DEVICE_NOT_OPENED_FOR_WRITE: ErrDeviceNotOpenedForWrite,
+	FT_FAILED_TO_WRITE_DEVICE:      ErrFailedToWriteDevice,
+	FT_EEPROM_READ_FAILED:          ErrEReadFailed,
+	FT_EEPROM_WRITE_FAILED:         ErrEWriteFailed,
+	FT_EEPROM_ERASE_FAILED:         ErrEEraseFailed,
+	FT_EEPROM_NOT_PRESENT:          ErrENotPresent,
+	FT_EEPROM_NOT_PROGRAMMED:       ErrENotProgrammed,
+	FT_INVALID_ARGS:                ErrInvalidArgs,
+	FT_NOT_SUPPORTED:               ErrNotSupported,
+	FT_OTHER_ERROR:                 ErrOther,
 }
 
 /* API

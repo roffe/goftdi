@@ -1,5 +1,3 @@
-//go:build windows
-
 package ftdi
 
 import (
@@ -8,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -65,22 +64,27 @@ var (
 var (
 	ErrInvalidDriver  = errors.New("unsupported FTDI DLL")
 	ErrDriverNotFound = errors.New("FTDI driver not found in system directories")
+
+	initOnce sync.Once
 )
 
-func init() {
-	d2xx, err := syscall.LoadDLL("ftd2xx.dll")
-	if err != nil {
-		InitErr = ErrDriverNotFound
-		return
-	}
-	for procName, procPtr := range dllFuncs {
-		proc, err := d2xx.FindProc(procName)
+func Init() error {
+	initOnce.Do(func() {
+		d2xx, err := syscall.LoadDLL("ftd2xx.dll")
 		if err != nil {
-			InitErr = fmt.Errorf("FTDI driver missing function: %s", procName)
+			InitErr = ErrDriverNotFound
 			return
 		}
-		*procPtr = proc
-	}
+		for procName, procPtr := range dllFuncs {
+			proc, err := d2xx.FindProc(procName)
+			if err != nil {
+				InitErr = fmt.Errorf("FTDI driver missing function: %s", procName)
+				return
+			}
+			*procPtr = proc
+		}
+	})
+	return InitErr
 }
 
 func bytesToString(b []byte) string {
@@ -89,6 +93,15 @@ func bytesToString(b []byte) string {
 		n = len(b)
 	}
 	return string(b[:n])
+}
+
+func ftdiError(e uintptr) error {
+	err, ok := errorList[e]
+	if ok {
+		return err
+	} else {
+		return ErrOther
+	}
 }
 
 var _ io.ReadWriteCloser = (*Device)(nil)
